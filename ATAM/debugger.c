@@ -19,6 +19,7 @@
 #include <stdbool.h>
 #define STB_LOCAL	(0)
 #define STB_GLOBAL	(1)
+#define SHT_SYMTAB  (2)
 
 Elf64_Addr get_function_addr(char* func_name, char* file_name){
 
@@ -60,7 +61,8 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     Elf64_Shdr *symtab_section = NULL;
     for (size_t i = 0; i < sections_num; ++i) {
         Elf64_Shdr* section = (Elf64_Shdr*)(sections + (i * section_size));
-        if (strcmp(".symtab", (char*)shstrtab + section->sh_name) == 0){
+        if (strcmp(".symtab", shstrtab + section->sh_name) == 0){
+        //if (section->sh_type == SHT_SYMTAB){
             symtab_section = section;
             break;
         }
@@ -99,7 +101,10 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     bool local = false;
     for (size_t i = 0; i < symtab_size; ++i) {
         symbol = (Elf64_Sym*)(symtab + (i * symbol_entry_size));
-        if (strcmp(func_name, strtab + symbol->st_name) == 0){
+        //matching name is is in text (function) and not a variable
+        Elf64_Shdr* section = (Elf64_Shdr*)(sections + (symbol->st_shndx * section_size));
+        if (strcmp(func_name, strtab + symbol->st_name) == 0 &&
+                strcmp(".text", shstrtab + section->sh_name) == 0){
             found = true;
             if (ELF64_ST_BIND(symbol->st_info) == STB_LOCAL)
                 local = true;
@@ -146,29 +151,30 @@ void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
         ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) func_entry);
 
         //trap function exit in memory value of rbp
-        Elf64_Addr function_return_addr = ptrace(PTRACE_PEEKTEXT, pid, (void *) regs.rbp, NULL);
+        Elf64_Addr function_return_addr = ptrace(PTRACE_PEEKTEXT, pid, (void *) regs.rsp, NULL);
         long function_finish = ptrace(PTRACE_PEEKTEXT, pid, (void *) function_return_addr, NULL);
         Elf64_Addr function_finish_trap = (function_finish & 0xFFFFFFFFFFFFFF00) | 0xCC;
-        ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) function_finish_trap);
+        ptrace(PTRACE_POKETEXT, pid, (void *) function_return_addr, (void *) function_finish_trap);
 
         //run until exiting function
         while (1) {
             ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
             wait(&status);
             ptrace(PTRACE_GETREGS, pid, 0, &regs);
-            if (regs.rip == function_return_addr)
+            if (regs.rip - 1 == function_return_addr)
                 break;
             ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
             wait(&status);
             ptrace(PTRACE_GETREGS, pid, 0, &regs);
             if (regs.rax != 0) {
-                printf("PRF:: syscall in %lld returned with %lld\n", regs.rip, regs.rax);
+                printf("PRF:: syscall in %lld returned with %lld\n", regs.rip - 2, regs.rax);
             }
         }
 
         //remove the breakpoint of return address
         ptrace(PTRACE_POKETEXT, pid, (void *) function_return_addr, (void *) function_finish);
         regs.rip -= 1;
+        ptrace(PTRACE_SETREGS, pid, 0, &regs);
     }
 }
 
