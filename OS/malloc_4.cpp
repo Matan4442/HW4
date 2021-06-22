@@ -15,6 +15,7 @@ typedef struct MallocMetaData {
     bool is_mmap;
     MallocMetaData* prev_arr;
     MallocMetaData* next_arr;
+    size_t alignment;
 } MallocMetaData;
 
 MallocMetaData* g_listHead = nullptr;
@@ -22,18 +23,19 @@ MallocMetaData* g_listTail = nullptr;
 MallocMetaData* g_mmaplistHead = nullptr;
 MallocMetaData* g_mmaplistTail = nullptr;
 
-#define SIZE_OF_MALLOC(size) ((size)+sizeof(MallocMetaData))
+#define ALIGNMENT (8)
+#define SIZE_OF_MALLOC(size) ((size)+sizeof(MallocMetaData)+ALIGNMENT)
 #define RETURN_TO_USER(curr) (void*)((size_t)(curr)+sizeof(MallocMetaData))
 #define P_METADATA(p)  (MallocMetaData*)((size_t)(p)-sizeof(MallocMetaData))
 #define MIN_BIN_SIZE (128)
 #define IS_BLOCK_SPLITTABLE(block_size ,size) \
-        (((block_size)-SIZE_OF_MALLOC(size)) > (sizeof(MallocMetaData) + MIN_BIN_SIZE))
+        (((block_size)-((size)+sizeof(MallocMetaData))) > SIZE_OF_MALLOC(MIN_BIN_SIZE))
 #define KB(x)  ((size_t) (x) << 10)
 #define ARR_INDEX(x) ((x) / KB(1))
 #define MMAP_THREASHOLD KB(128)
 #define MAX_SIZE (pow(10,8))
-
 #define BINS_SIZE (128)
+
 MallocMetaData* bins[BINS_SIZE] = {nullptr};
 
 MallocMetaData* getMatchingBin(size_t size){
@@ -110,7 +112,12 @@ void splitBin(MallocMetaData* current, size_t size){
     if (IS_BLOCK_SPLITTABLE(current->size,size)) {
         removeBinArray(current);
         current->is_free = false;
-        MallocMetaData *newp = (MallocMetaData *) ((size_t) current + size + sizeof(MallocMetaData));
+        MallocMetaData *ptr = (MallocMetaData *) ((size_t) current + size + sizeof(MallocMetaData));
+        size_t addr = (size_t)ptr+ALIGNMENT+sizeof(MallocMetaData);
+        size_t align = addr % ALIGNMENT;
+        void* pUser = (void*)(addr - align);
+        MallocMetaData *newp = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
+        newp->alignment = align;
         newp->is_free = true;
         newp->is_mmap = false;
         newp->size = current->size - sizeof(MallocMetaData) - size;
@@ -146,7 +153,11 @@ void* smalloc(size_t size)
             {
                 return NULL;
             }
-            newp =  (MallocMetaData*)ptr;
+            size_t addr = (size_t)ptr+ALIGNMENT+sizeof(MallocMetaData);
+            size_t align = addr % ALIGNMENT;
+            void* pUser = (void*)(addr - addr%ALIGNMENT);
+            newp = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
+            newp->alignment = align;
             newp->is_free = false;
             newp->is_mmap = false;
             newp->size = size;
@@ -155,14 +166,14 @@ void* smalloc(size_t size)
             insertNewBinArray(newp);
             if (g_listHead == nullptr)
             {
-                g_listHead = g_listTail =  (MallocMetaData*)ptr;
+                g_listHead = g_listTail = (MallocMetaData*)ptr;
             }
             else
             {
                 g_listTail->next = newp;
                 g_listTail = g_listTail->next;
             }
-            return RETURN_TO_USER(ptr);
+            return pUser;
         }
         else{
             ptr = sbrk(size - g_listTail->size);
@@ -180,7 +191,11 @@ void* smalloc(size_t size)
         if(ptr == MAP_FAILED){
             return NULL;
         }
-        MallocMetaData * current = (MallocMetaData*)ptr;
+        size_t addr = (size_t)ptr+ALIGNMENT+sizeof(MallocMetaData);
+        size_t align = addr % ALIGNMENT;
+        void* pUser = (void*)(addr - addr%ALIGNMENT);
+        MallocMetaData * current = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
+        current->alignment = align;
         current->size = size;
         current->is_mmap = true;
         current->next = nullptr;
@@ -194,7 +209,7 @@ void* smalloc(size_t size)
             g_mmaplistTail->next = current;
             g_mmaplistTail = g_mmaplistTail->next;
         }
-        return RETURN_TO_USER(g_mmaplistTail);
+        return pUser;
     }
 }
 
@@ -212,7 +227,7 @@ void* scalloc(size_t num, size_t size)
 void combineWithNext(MallocMetaData* p){
     removeBinArray(p->next);
     removeBinArray(p);
-    p->size += p->next->size + sizeof(MallocMetaData);
+    p->size += p->next->size + sizeof(MallocMetaData) + p->next->alignment;
     p->next = p->next->next;
     if (p->next->next) {
         (p->next->next)->prev = p;
