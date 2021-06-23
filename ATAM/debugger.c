@@ -99,7 +99,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     Elf64_Sym* symbol = NULL;
     bool found = false;
     bool local = false;
-    for (size_t i = 0; i < symtab_size; ++i) {
+    for (size_t i = 0; i < symtab_size / symbol_entry_size ; ++i) {
         symbol = (Elf64_Sym*)(symtab + (i * symbol_entry_size));
         //matching name is is in text (function) and not a variable
         Elf64_Shdr* section = (Elf64_Shdr*)(sections + (symbol->st_shndx * section_size));

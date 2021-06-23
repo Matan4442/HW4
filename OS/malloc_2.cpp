@@ -92,7 +92,7 @@ void* srealloc(void* oldp, size_t size)
         return NULL;
     }
     MallocMetaData* metaPtr = P_METADATA(oldp);
-    if(metaPtr->size > size){
+    if(metaPtr->size >= size){
         return oldp;
     }
     void* newp = smalloc(size);
