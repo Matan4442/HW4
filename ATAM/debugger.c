@@ -57,12 +57,13 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
         return -1;
     }
 
+
     //get symbol tables section header
     Elf64_Shdr *symtab_section = NULL;
     for (size_t i = 0; i < sections_num; ++i) {
         Elf64_Shdr* section = (Elf64_Shdr*)(sections + (i * section_size));
-        if (strcmp(".symtab", shstrtab + section->sh_name) == 0){
-        //if (section->sh_type == SHT_SYMTAB){
+        //if (strcmp(".symtab", shstrtab + section->sh_name) == 0){
+        if (section->sh_type == SHT_SYMTAB){
             symtab_section = section;
             break;
         }
@@ -101,15 +102,16 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     bool local = false;
     for (size_t i = 0; i < symtab_size / symbol_entry_size ; ++i) {
         symbol = (Elf64_Sym*)(symtab + (i * symbol_entry_size));
-        //matching name is is in text (function) and not a variable
-        Elf64_Shdr* section = (Elf64_Shdr*)(sections + (symbol->st_shndx * section_size));
-        if (strcmp(func_name, strtab + symbol->st_name) == 0 &&
-                strcmp(".text", shstrtab + section->sh_name) == 0){
+        //Elf64_Shdr* section = (Elf64_Shdr*)(sections + (symbol->st_shndx * section_size));
+        if (strcmp(func_name, strtab + symbol->st_name) == 0) {
+            //if (strcmp(".text", shstrtab + section->sh_name) == 0)
             found = true;
             if (ELF64_ST_BIND(symbol->st_info) == STB_LOCAL)
                 local = true;
-            else
+            else {
+                local = false;
                 break;
+            }
         }
     }
     fclose(file);
@@ -131,19 +133,18 @@ void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
     int status;
     struct user_regs_struct regs;
     wait(&status);
-    while (WIFSTOPPED(status)) {
-        //trap int 3 into function entry
-        long func_entry = ptrace(PTRACE_PEEKTEXT, pid, (void *) function_addr, NULL);
-        long func_entry_trap = (func_entry & 0xFFFFFFFFFFFFFF00) | 0xCC;
-        ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) func_entry_trap);
+    long func_entry = ptrace(PTRACE_PEEKTEXT, pid, (void *) function_addr, NULL);
+    long func_entry_trap = (func_entry & 0xFFFFFFFFFFFFFF00) | 0xCC;
+    ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) func_entry_trap);
 
-        //let the child run to breakpoint or to exit the program (if no more function calls / there is none)
-        ptrace(PTRACE_CONT, pid, NULL, NULL);
-        wait(&status);
-        if (WIFEXITED(status)) {
-            return;
-        }
+    //let the child run to breakpoint or to exit the program (if no more function calls / there is none)
+    ptrace(PTRACE_CONT, pid, NULL, NULL);
+    wait(&status);
+    if (WIFEXITED(status)) {
+        return;
+    }
 
+    while (WIFSTOPPED(status)) { //enter with breakpoint in function entry
         //remove the breakpoint in function entry
         ptrace(PTRACE_GETREGS, pid, 0, &regs);
         regs.rip -= 1;
@@ -175,6 +176,15 @@ void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
         ptrace(PTRACE_POKETEXT, pid, (void *) function_return_addr, (void *) function_finish);
         regs.rip -= 1;
         ptrace(PTRACE_SETREGS, pid, 0, &regs);
+
+        //trap int 3 into function entry
+        func_entry = ptrace(PTRACE_PEEKTEXT, pid, (void *) function_addr, NULL);
+        func_entry_trap = (func_entry & 0xFFFFFFFFFFFFFF00) | 0xCC;
+        ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) func_entry_trap);
+
+        //let the child run to breakpoint or to exit the program (if no more function calls / there is none)
+        ptrace(PTRACE_CONT, pid, NULL, NULL);
+        wait(&status);
     }
 }
 
