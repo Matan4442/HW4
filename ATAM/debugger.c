@@ -26,13 +26,13 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     FILE* file = fopen(file_name,"r");
     if (file == NULL){
         perror("fopen failed");
-        return -1;
+        exit(1);
     }
     //get header
     Elf64_Ehdr child_header;
     if (fread((void*)&child_header, sizeof(child_header), 1, file) != 1){
         perror("fread 1 failed");
-        return -1;
+        exit(1);
     }
     //get sections
     Elf64_Off sections_off = child_header.e_shoff;
@@ -43,7 +43,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     char sections[section_size * sections_num];
     if (fread((void*)&sections, section_size, sections_num, file) != sections_num){
         perror("fread 2 failed");
-        return -1;
+        exit(1);
     }
 
     //get sections names
@@ -54,7 +54,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     fseek(file, shstrtab_offset, SEEK_SET);
     if (fread((void*)&shstrtab, shstrtab_size, 1 ,file) != 1){
         perror("fread 3 failed");
-        return -1;
+        exit(1);
     }
 
 
@@ -70,7 +70,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     }
     if (symtab_section == NULL){
         perror("could not find symtab section");
-        return -1;
+        exit(1);
     }
     Elf64_Off symtab_offset = symtab_section->sh_offset;
     Elf64_Xword symtab_size = symtab_section->sh_size;
@@ -85,7 +85,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     fseek(file, strtab_offset, SEEK_SET);
     if (fread((void*)&strtab, strtab_size, 1 ,file) != 1){
         perror("fread 4 failed");
-        return -1;
+        exit(1);
     }
 
     //get symbols
@@ -93,7 +93,7 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     fseek(file, symtab_offset, SEEK_SET);
     if (fread((void*)&symtab, symtab_size, 1 ,file) != 1){
         perror("fread 5 failed");
-        return -1;
+        exit(1);
     }
 
     //find matching symbol to function
@@ -117,16 +117,16 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
     fclose(file);
     if(!found) {
         printf("PRF:: not found!\n");
-        return -1;
+        return 1;
     }
     else if (local) {
         printf("PRF:: local found!\n");
-        return -1;
+        return 1;
     }
     else {
-        //Elf64_Shdr *text_entry = (Elf64_Shdr *) (sections + (symbol->st_shndx * section_size));
-        //return text_entry->sh_addr + symbol->st_value;
-        return symbol->st_value;
+        Elf64_Shdr *text_entry = (Elf64_Shdr *) (sections + (symbol->st_shndx * section_size));
+        return text_entry->sh_addr + symbol->st_value;
+        //return symbol->st_value;
     }
 }
 void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
@@ -151,7 +151,7 @@ void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
         ptrace(PTRACE_SETREGS, pid, 0, &regs);
         ptrace(PTRACE_POKETEXT, pid, (void *) function_addr, (void *) func_entry);
 
-        //trap function exit in memory value of rbp
+        //trap function exit in memory value of rsp
         Elf64_Addr function_return_addr = ptrace(PTRACE_PEEKTEXT, pid, (void *) regs.rsp, NULL);
         long function_finish = ptrace(PTRACE_PEEKTEXT, pid, (void *) function_return_addr, NULL);
         Elf64_Addr function_finish_trap = (function_finish & 0xFFFFFFFFFFFFFF00) | 0xCC;
@@ -214,8 +214,8 @@ pid_t run_target(char** argv)
 int main(int argc, char** argv)
 {
     Elf64_Addr function_addr = get_function_addr(argv[1], argv[2]);
-    if (function_addr == -1){
-        return -1;
+    if (function_addr == 1){
+        return 1;
     }
     pid_t pid = run_target(argv);
     run_track_syscalls_in_function(pid, function_addr);

@@ -26,7 +26,7 @@ IMPORTANT_NOTE: I HOLD NO responsability for these tests no to their results, th
 #include <cstdlib>
 #include <sys/wait.h>
 #include <iostream>
-#include "malloc_2.h"
+#include "malloc.h"
 
 #define assert_state(_initial, _expected)\
 	do {\

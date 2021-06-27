@@ -39,7 +39,10 @@ MallocMetaData* g_mmaplistTail = nullptr;
 MallocMetaData* bins[BINS_SIZE] = {nullptr};
 
 MallocMetaData* getMatchingBin(size_t size){
-    for (size_t i = ARR_INDEX(size) ; i < BINS_SIZE ; ++i) {
+    size_t i = ARR_INDEX(size);
+    if (size == BINS_SIZE)
+        i--;
+    for (; i < BINS_SIZE ; ++i) {
         MallocMetaData* curr = bins[i];
         if (curr == nullptr)
             continue;
@@ -67,7 +70,9 @@ MallocMetaData* getMatchingBin(size_t size){
 
 void insertNewBinArray(MallocMetaData* newp) {
     size_t index = ARR_INDEX(newp->size);
-    if (index > BINS_SIZE)
+    if (index == BINS_SIZE)
+        index--;
+    if (index >= BINS_SIZE)
         return;
     MallocMetaData* curr = bins[index];
     if (curr == nullptr) {
@@ -98,6 +103,8 @@ void insertNewBinArray(MallocMetaData* newp) {
 
 void removeBinArray(MallocMetaData* oldp) {
     size_t index = ARR_INDEX(oldp->size);
+    if (index == BINS_SIZE)
+        index--;
     MallocMetaData* prev = oldp->prev_arr;
     MallocMetaData* next = oldp->next_arr;
     if (next)
@@ -147,7 +154,18 @@ void* smalloc(size_t size)
             return RETURN_TO_USER(newp);
         }
         void *ptr;
-        if(g_listTail->is_free == false) {
+        if(g_listTail && g_listTail->is_free)
+            {
+                ptr = sbrk(size - g_listTail->size);
+                if (ptr ==  (void*)(-1))
+                {
+                    return NULL;
+                }
+                g_listTail->size = size;
+                g_listTail->is_free = false;
+                return RETURN_TO_USER(g_listTail);
+            }
+        else{
             ptr = sbrk(SIZE_OF_MALLOC(size));
             if (ptr ==  (void*)(-1))
             {
@@ -174,16 +192,6 @@ void* smalloc(size_t size)
                 g_listTail = g_listTail->next;
             }
             return pUser;
-        }
-        else{
-            ptr = sbrk(size - g_listTail->size);
-            if (ptr ==  (void*)(-1))
-            {
-                return NULL;
-            }
-            g_listTail->size = size;
-            g_listTail->is_free = false;
-            return RETURN_TO_USER(g_listTail);
         }
     }
     else{
@@ -289,14 +297,15 @@ void* srealloc(void* oldp, size_t size)
     }
     MallocMetaData* metaPtr = P_METADATA(oldp);
     if(metaPtr->is_mmap){
-        if(metaPtr->size >= size){
+        if(metaPtr->size == size){
             return oldp;
         }
         void* newp = smalloc(size);
         if (newp== nullptr){
             return NULL;
         }
-        memmove(newp, oldp, metaPtr->size);
+        if (metaPtr->size < size)
+            memcpy(newp, oldp, metaPtr->size);
         sfree(oldp);
         return newp;
     }

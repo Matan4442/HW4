@@ -2,10 +2,8 @@
 #define HW4_MALLOC_2_H
 
 
-#include <iostream>
 #include <math.h>
 #include <unistd.h>
-#include <cstring>
 
 void* smalloc(size_t size);
 
