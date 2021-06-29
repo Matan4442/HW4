@@ -3,4 +3,4 @@ project(HW4)
 
 set(CMAKE_CXX_STANDARD 11)
 
-add_executable(HW4 ATAM/debugger.c OS/malloc_1.cpp OS/malloc_2.cpp OS/malloc_3.cpp)
+add_executable(HW4 OS/test.cpp OS/malloc_3.cpp)

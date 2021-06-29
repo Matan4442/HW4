@@ -300,7 +300,7 @@ void* srealloc(void* oldp, size_t size)
             return NULL;
         }
         if (metaPtr->size < size)
-            memcpy(newp, oldp, metaPtr->size);
+            memmove(newp, oldp, metaPtr->size);
         sfree(oldp);
         return newp;
     }
@@ -314,14 +314,14 @@ void* srealloc(void* oldp, size_t size)
         combineWithNext(newp);
         newp->is_free = false;
         splitBin(newp, size);
-        memcpy(RETURN_TO_USER(newp) ,oldp ,metaPtr->size);
+        memmove(RETURN_TO_USER(newp) ,oldp ,metaPtr->size);
         return RETURN_TO_USER(newp);
     }
     else if(metaPtr->next && metaPtr->next->is_free && (metaPtr->size + metaPtr->next->size + sizeof(MallocMetaData)) > size){ //c
         removeBinArray(metaPtr->next);
         combineWithNext(metaPtr);
         metaPtr->next->is_free = false;
-        splitBin(metaPtr, metaPtr->size);
+        splitBin(metaPtr, size);
         return oldp;
     }
     else if(metaPtr->prev && metaPtr->next && metaPtr->prev->is_free && metaPtr->next->is_free &&
@@ -334,7 +334,7 @@ void* srealloc(void* oldp, size_t size)
         newp->is_free = false;
         metaPtr->next->is_free = false;
         splitBin(newp, size);
-        memcpy(RETURN_TO_USER(newp) ,oldp , metaPtr->size);
+        memmove(RETURN_TO_USER(newp) ,oldp , metaPtr->size);
         return RETURN_TO_USER(newp);
     }
     else { //metaPtr->size < size
@@ -343,7 +343,7 @@ void* srealloc(void* oldp, size_t size)
         if (newp == nullptr) {
             return nullptr;
         }
-        memcpy(newp ,oldp ,metaPtr->size);
+        memmove(newp ,oldp ,metaPtr->size);
         if (newp != oldp)
             sfree(oldp);
         return newp;

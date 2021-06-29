@@ -26,7 +26,6 @@ typedef struct MallocMetadata3 {
     bool is_mmap;
     MallocMetadata3* prev_arr;
     MallocMetadata3* next_arr;
-    size_t alignment;
 } Metadata3;
 
 

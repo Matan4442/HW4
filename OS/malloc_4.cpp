@@ -29,13 +29,13 @@ MallocMetaData* g_mmaplistTail = nullptr;
 #define P_METADATA(p)  (MallocMetaData*)((size_t)(p)-sizeof(MallocMetaData))
 #define MIN_BIN_SIZE (128)
 #define IS_BLOCK_SPLITTABLE(block_size ,size) \
-        (((block_size)-((size)+sizeof(MallocMetaData))) > SIZE_OF_MALLOC(MIN_BIN_SIZE))
+        ((block_size) > ((size)+sizeof(MallocMetaData) + SIZE_OF_MALLOC(MIN_BIN_SIZE)))
 #define KB(x)  ((size_t) (x) << 10)
 #define ARR_INDEX(x) ((x) / KB(1))
 #define MMAP_THREASHOLD KB(128)
 #define MAX_SIZE (pow(10,8))
-#define BINS_SIZE (128)
 
+#define BINS_SIZE (128)
 MallocMetaData* bins[BINS_SIZE] = {nullptr};
 
 MallocMetaData* getMatchingBin(size_t size){
@@ -60,7 +60,8 @@ MallocMetaData* getMatchingBin(size_t size){
         }
         else{
             prev->next_arr = curr->next_arr;
-            curr->next_arr->prev = prev;
+            if (curr->next_arr)
+                (curr->next_arr)->prev = prev;
         }
         curr->next_arr = curr->prev_arr = nullptr;
         return curr;
@@ -90,13 +91,16 @@ void insertNewBinArray(MallocMetaData* newp) {
     if (curr == nullptr) { //end
         if(prev)
             prev->next_arr = newp;
-        newp->prev = prev;
+        newp->prev_arr = prev;
     }else{
+        curr->prev_arr = newp;
+        newp->next_arr = curr;
         if (prev) {
             prev->next_arr = newp;
-            newp->next_arr = curr;
-            curr->prev_arr = newp;
             newp->prev_arr = prev;
+        }else{ // enter as first
+            newp->prev_arr = nullptr;
+            bins[index] = newp;
         }
     }
 }
@@ -107,6 +111,9 @@ void removeBinArray(MallocMetaData* oldp) {
         index--;
     MallocMetaData* prev = oldp->prev_arr;
     MallocMetaData* next = oldp->next_arr;
+    oldp->next_arr = oldp->prev_arr = nullptr;
+    if (!prev && bins[index] != oldp)
+        return;
     if (next)
         next->prev_arr = prev;
     if (prev)
@@ -124,7 +131,7 @@ void splitBin(MallocMetaData* current, size_t size){
         size_t align = addr % ALIGNMENT;
         void* pUser = (void*)(addr - align);
         MallocMetaData *newp = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
-        newp->alignment = align;
+        newp->alignment = align == 0 ? 8 : align;
         newp->is_free = true;
         newp->is_mmap = false;
         newp->size = current->size - sizeof(MallocMetaData) - size;
@@ -137,7 +144,6 @@ void splitBin(MallocMetaData* current, size_t size){
             g_listTail = newp;
         current->next = newp;
         insertNewBinArray(newp);
-        insertNewBinArray(current);
     }
 }
 
@@ -147,44 +153,44 @@ void* smalloc(size_t size)
     {
         return NULL;
     }
-    if (size < MMAP_THREASHOLD){
+    if (size <= MMAP_THREASHOLD){
         MallocMetaData *newp = getMatchingBin(size);
         if (newp){
+            newp->is_free = false;
             splitBin(newp, size);
             return RETURN_TO_USER(newp);
         }
         void *ptr;
-        if(g_listTail && g_listTail->is_free)
-            {
-                ptr = sbrk(size - g_listTail->size);
-                if (ptr ==  (void*)(-1))
-                {
-                    return NULL;
-                }
-                g_listTail->size = size;
-                g_listTail->is_free = false;
-                return RETURN_TO_USER(g_listTail);
-            }
-        else{
-            ptr = sbrk(SIZE_OF_MALLOC(size));
+        if(g_listTail != NULL && g_listTail->is_free){
+            ptr = sbrk(size - g_listTail->size);
             if (ptr ==  (void*)(-1))
             {
                 return NULL;
             }
-            size_t addr = (size_t)ptr+ALIGNMENT+sizeof(MallocMetaData);
-            size_t align = addr % ALIGNMENT;
-            void* pUser = (void*)(addr - addr%ALIGNMENT);
+            removeBinArray(g_listTail);
+            g_listTail->size = size;
+            g_listTail->is_free = false;
+            return RETURN_TO_USER(g_listTail);
+        }
+        else{
+            ptr = sbrk(SIZE_OF_MALLOC(size));
+            if (ptr ==  (void*)(-1))
+            {
+                return nullptr;
+            }
+            void* addr = (void*)((size_t)ptr+ALIGNMENT+sizeof(MallocMetaData));
+            size_t align = (size_t)addr % ALIGNMENT;
+            void* pUser = (void*)((size_t)addr - (size_t)addr%ALIGNMENT);
             newp = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
-            newp->alignment = align;
+            newp->alignment = align == 0 ? 8 : align;
             newp->is_free = false;
             newp->is_mmap = false;
             newp->size = size;
             newp->prev = g_listTail;
             newp->next = nullptr;
-            insertNewBinArray(newp);
             if (g_listHead == nullptr)
             {
-                g_listHead = g_listTail = (MallocMetaData*)ptr;
+                g_listHead = g_listTail =  (MallocMetaData*)newp;
             }
             else
             {
@@ -203,14 +209,14 @@ void* smalloc(size_t size)
         size_t align = addr % ALIGNMENT;
         void* pUser = (void*)(addr - addr%ALIGNMENT);
         MallocMetaData * current = (MallocMetaData *)((size_t)pUser-sizeof(MallocMetaData));
-        current->alignment = align;
+        current->alignment = align == 0 ? 8 : align;
         current->size = size;
         current->is_mmap = true;
         current->next = nullptr;
         current->prev = g_mmaplistTail;
         if (g_mmaplistHead == nullptr)
         {
-            g_mmaplistHead = g_mmaplistTail = (MallocMetaData*)ptr;
+            g_mmaplistHead = g_mmaplistTail = (MallocMetaData*)current;
         }
         else
         {
@@ -233,24 +239,27 @@ void* scalloc(size_t num, size_t size)
 }
 
 void combineWithNext(MallocMetaData* p){
-    removeBinArray(p->next);
-    removeBinArray(p);
-    p->size += p->next->size + sizeof(MallocMetaData) + p->next->alignment;
+    p->size += p->next->size + sizeof(MallocMetaData);
     p->next = p->next->next;
-    if (p->next->next) {
-        (p->next->next)->prev = p;
+    if (p->next) {
+        (p->next)->prev = p;
     }
     else if (g_listTail == p->next)
         g_listTail = p;
-    insertNewBinArray(p);
 }
 
 void combineAdjacent(MallocMetaData* current){
     if(current->next && (current->next)->is_free) {
+        removeBinArray(current->next);
+        removeBinArray(current);
         combineWithNext(current);
+        insertNewBinArray(current);
     }
     if (current->prev && (current->prev)->is_free) {
+        removeBinArray(current->prev);
+        removeBinArray(current);
         combineWithNext(current->prev);
+        insertNewBinArray(current->prev);
     }
 }
 
@@ -281,6 +290,7 @@ void sfree(void* p)
     }else {
         if (metaPtr->is_free)
             return;
+        insertNewBinArray(metaPtr);
         combineAdjacent(metaPtr);
         metaPtr->is_free = true;
     }
@@ -301,11 +311,11 @@ void* srealloc(void* oldp, size_t size)
             return oldp;
         }
         void* newp = smalloc(size);
-        if (newp== nullptr){
+        if (newp == nullptr){
             return NULL;
         }
         if (metaPtr->size < size)
-            memcpy(newp, oldp, metaPtr->size);
+            memmove(newp, oldp, metaPtr->size);
         sfree(oldp);
         return newp;
     }
@@ -315,32 +325,42 @@ void* srealloc(void* oldp, size_t size)
     }
     else if(metaPtr->prev && metaPtr->prev->is_free && (metaPtr->size + metaPtr->prev->size + sizeof(MallocMetaData)) > size){ //b
         MallocMetaData* newp = metaPtr->prev;
+        removeBinArray(newp);
         combineWithNext(newp);
+        newp->is_free = false;
         splitBin(newp, size);
-        memmove(newp ,oldp ,metaPtr->size);
+        memmove(RETURN_TO_USER(newp) ,oldp ,metaPtr->size);
         return RETURN_TO_USER(newp);
     }
     else if(metaPtr->next && metaPtr->next->is_free && (metaPtr->size + metaPtr->next->size + sizeof(MallocMetaData)) > size){ //c
+        removeBinArray(metaPtr->next);
         combineWithNext(metaPtr);
-        splitBin(metaPtr, metaPtr->size);
+        metaPtr->next->is_free = false;
+        splitBin(metaPtr, size);
         return oldp;
     }
     else if(metaPtr->prev && metaPtr->next && metaPtr->prev->is_free && metaPtr->next->is_free &&
             (metaPtr->size + metaPtr->prev->size + (2*sizeof(MallocMetaData)) + metaPtr->next->size) > size){ //d
         MallocMetaData* newp = metaPtr->prev;
+        removeBinArray(newp);
+        removeBinArray(metaPtr->next);
         combineWithNext(metaPtr);
         combineWithNext(newp);
+        newp->is_free = false;
+        metaPtr->next->is_free = false;
         splitBin(newp, size);
-        memmove(newp ,oldp , metaPtr->size);
+        memmove(RETURN_TO_USER(newp) ,oldp , metaPtr->size);
         return RETURN_TO_USER(newp);
     }
-    else {
+    else { //metaPtr->size < size
+        metaPtr->is_free = true;
         void *newp = smalloc(size);
         if (newp == nullptr) {
             return nullptr;
         }
         memmove(newp ,oldp ,metaPtr->size);
-        sfree(oldp);
+        if (newp != oldp)
+            sfree(oldp);
         return newp;
     }
 }
@@ -353,6 +373,7 @@ size_t _num_free_blocks(){
         count += current->is_free;
         current = current->next;
     }
+
     return count;
 }
 
@@ -378,6 +399,11 @@ size_t _num_allocated_blocks(){
         count ++;
         current = current->next;
     }
+    current = g_mmaplistHead;
+    while (current != nullptr){
+        count ++;
+        current = current->next;
+    }
     return count;
 }
 
@@ -389,6 +415,11 @@ size_t _num_allocated_bytes(){
         count += current->size;
         current = current->next;
     }
+    current = g_mmaplistHead;
+    while (current != nullptr){
+        count += current->size;
+        current = current->next;
+    }
     return count;
 }
 
@@ -397,6 +428,11 @@ size_t _num_meta_data_bytes() {
     MallocMetaData* current = g_listHead;
     size_t metadata_size = sizeof(MallocMetaData);
     while (current != nullptr) {
+        count += metadata_size;
+        current = current->next;
+    }
+    current = g_mmaplistHead;
+    while (current != nullptr){
         count += metadata_size;
         current = current->next;
     }
