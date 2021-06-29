@@ -338,6 +338,15 @@ void* srealloc(void* oldp, size_t size)
         return RETURN_TO_USER(newp);
     }
     else { //metaPtr->size < size
+        if(g_listTail == metaPtr) {
+            void* ptr = sbrk(size - g_listTail->size);
+            if (ptr == (void *) (-1)) {
+                return NULL;
+            }
+            g_listTail->size = size;
+            g_listTail->is_free = false;
+            return RETURN_TO_USER(g_listTail);
+        }
         metaPtr->is_free = true;
         void *newp = smalloc(size);
         if (newp == nullptr) {
