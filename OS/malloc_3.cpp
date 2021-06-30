@@ -17,10 +17,10 @@ typedef struct MallocMetaData {
     MallocMetaData* next_arr;
 } MallocMetaData;
 
-MallocMetaData* g_listHead = nullptr;
-MallocMetaData* g_listTail = nullptr;
-MallocMetaData* g_mmaplistHead = nullptr;
-MallocMetaData* g_mmaplistTail = nullptr;
+MallocMetaData* g_listHead = NULL;
+MallocMetaData* g_listTail = NULL;
+MallocMetaData* g_mmaplistHead = NULL;
+MallocMetaData* g_mmaplistTail = NULL;
 
 #define SIZE_OF_MALLOC(size) ((size)+sizeof(MallocMetaData))
 #define RETURN_TO_USER(curr) (void*)((size_t)(curr)+sizeof(MallocMetaData))
@@ -34,7 +34,7 @@ MallocMetaData* g_mmaplistTail = nullptr;
 #define MAX_SIZE (pow(10,8))
 
 #define BINS_SIZE (128)
-MallocMetaData* bins[BINS_SIZE] = {nullptr};
+MallocMetaData* bins[BINS_SIZE] = {NULL};
 
 MallocMetaData* getMatchingBin(size_t size){
     size_t i = ARR_INDEX(size);
@@ -42,18 +42,18 @@ MallocMetaData* getMatchingBin(size_t size){
         i--;
     for (; i < BINS_SIZE ; ++i) {
         MallocMetaData* curr = bins[i];
-        if (curr == nullptr)
+        if (curr == NULL)
             continue;
-        MallocMetaData* prev = nullptr;
+        MallocMetaData* prev = NULL;
         while (curr) {
             if (curr->size >= size)
                 break;
             prev = curr;
             curr = curr->next_arr;
         }
-        if (curr == nullptr)
+        if (curr == NULL)
             continue;
-        else if (prev == nullptr){ // list head
+        else if (prev == NULL){ // list head
             bins[i] = curr->next_arr;
         }
         else{
@@ -61,10 +61,10 @@ MallocMetaData* getMatchingBin(size_t size){
             if (curr->next_arr)
                 (curr->next_arr)->prev = prev;
         }
-        curr->next_arr = curr->prev_arr = nullptr;
+        curr->next_arr = curr->prev_arr = NULL;
         return curr;
     }
-    return nullptr;
+    return NULL;
 }
 
 void insertNewBinArray(MallocMetaData* newp) {
@@ -74,19 +74,19 @@ void insertNewBinArray(MallocMetaData* newp) {
     if (index >= BINS_SIZE)
         return;
     MallocMetaData* curr = bins[index];
-    if (curr == nullptr) {
+    if (curr == NULL) {
         bins[index] = newp;
-        newp->next_arr = newp->prev_arr = nullptr;
+        newp->next_arr = newp->prev_arr = NULL;
         return;
     }
-    MallocMetaData* prev = nullptr;
+    MallocMetaData* prev = NULL;
     while (curr) {
         if (curr->size >= newp->size)
             break;
         prev = curr;
         curr = curr->next_arr;
     }
-    if (curr == nullptr) { //end
+    if (curr == NULL) { //end
         if(prev)
             prev->next_arr = newp;
         newp->prev_arr = prev;
@@ -97,7 +97,7 @@ void insertNewBinArray(MallocMetaData* newp) {
             prev->next_arr = newp;
             newp->prev_arr = prev;
         }else{ // enter as first
-            newp->prev_arr = nullptr;
+            newp->prev_arr = NULL;
             bins[index] = newp;
         }
     }
@@ -109,7 +109,7 @@ void removeBinArray(MallocMetaData* oldp) {
         index--;
     MallocMetaData* prev = oldp->prev_arr;
     MallocMetaData* next = oldp->next_arr;
-    oldp->next_arr = oldp->prev_arr = nullptr;
+    oldp->next_arr = oldp->prev_arr = NULL;
     if (!prev && bins[index] != oldp)
         return;
     if (next)
@@ -176,8 +176,8 @@ void* smalloc(size_t size)
             newp->is_mmap = false;
             newp->size = size;
             newp->prev = g_listTail;
-            newp->next = nullptr;
-            if (g_listHead == nullptr)
+            newp->next = NULL;
+            if (g_listHead == NULL)
             {
                 g_listHead = g_listTail =  (MallocMetaData*)ptr;
             }
@@ -197,9 +197,9 @@ void* smalloc(size_t size)
         MallocMetaData * current = (MallocMetaData*)ptr;
         current->size = size;
         current->is_mmap = true;
-        current->next = nullptr;
+        current->next = NULL;
         current->prev = g_mmaplistTail;
-        if (g_mmaplistHead == nullptr)
+        if (g_mmaplistHead == NULL)
         {
             g_mmaplistHead = g_mmaplistTail = (MallocMetaData*)ptr;
         }
@@ -258,14 +258,14 @@ void sfree(void* p)
         if (metaPtr == g_mmaplistHead){
             g_mmaplistHead = metaPtr->next;
             if (g_mmaplistHead){
-                g_mmaplistHead->prev = nullptr;
+                g_mmaplistHead->prev = NULL;
             }
             else //g_mmaplistHead = NULL
-                g_mmaplistTail = nullptr;
+                g_mmaplistTail = NULL;
         }
         else if (metaPtr == g_mmaplistTail){
             g_mmaplistTail = metaPtr->prev;
-            metaPtr->prev->next = nullptr;
+            metaPtr->prev->next = NULL;
         }
         else{
             metaPtr->next->prev = metaPtr->prev;
@@ -296,7 +296,7 @@ void* srealloc(void* oldp, size_t size)
             return oldp;
         }
         void* newp = smalloc(size);
-        if (newp == nullptr){
+        if (newp == NULL){
             return NULL;
         }
         if (metaPtr->size < size)
@@ -349,8 +349,8 @@ void* srealloc(void* oldp, size_t size)
         }
         metaPtr->is_free = true;
         void *newp = smalloc(size);
-        if (newp == nullptr) {
-            return nullptr;
+        if (newp == NULL) {
+            return NULL;
         }
         memmove(newp ,oldp ,metaPtr->size);
         if (newp != oldp)
@@ -362,7 +362,7 @@ void* srealloc(void* oldp, size_t size)
 size_t _num_free_blocks(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count += current->is_free;
         current = current->next;
@@ -375,7 +375,7 @@ size_t _num_free_bytes()
 {
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         if (current->is_free) {
             count += current->size;
@@ -388,13 +388,13 @@ size_t _num_free_bytes()
 size_t _num_allocated_blocks(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count ++;
         current = current->next;
     }
     current = g_mmaplistHead;
-    while (current != nullptr){
+    while (current != NULL){
         count ++;
         current = current->next;
     }
@@ -404,13 +404,13 @@ size_t _num_allocated_blocks(){
 size_t _num_allocated_bytes(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count += current->size;
         current = current->next;
     }
     current = g_mmaplistHead;
-    while (current != nullptr){
+    while (current != NULL){
         count += current->size;
         current = current->next;
     }
@@ -421,12 +421,12 @@ size_t _num_meta_data_bytes() {
     size_t count = 0;
     MallocMetaData* current = g_listHead;
     size_t metadata_size = sizeof(MallocMetaData);
-    while (current != nullptr) {
+    while (current != NULL) {
         count += metadata_size;
         current = current->next;
     }
     current = g_mmaplistHead;
-    while (current != nullptr){
+    while (current != NULL){
         count += metadata_size;
         current = current->next;
     }

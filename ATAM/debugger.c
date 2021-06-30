@@ -124,9 +124,9 @@ Elf64_Addr get_function_addr(char* func_name, char* file_name){
         return 1;
     }
     else {
-        Elf64_Shdr *text_entry = (Elf64_Shdr *) (sections + (symbol->st_shndx * section_size));
-        return text_entry->sh_addr + symbol->st_value;
-        //return symbol->st_value;
+        //Elf64_Shdr *text_entry = (Elf64_Shdr *) (sections + (symbol->st_shndx * section_size));
+        //return text_entry->sh_addr + symbol->st_value;
+        return symbol->st_value;
     }
 }
 void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
@@ -167,7 +167,7 @@ void run_track_syscalls_in_function(pid_t pid, Elf64_Addr function_addr) {
             ptrace(PTRACE_SYSCALL, pid, NULL, NULL);
             wait(&status);
             ptrace(PTRACE_GETREGS, pid, 0, &regs);
-            if (regs.rax != 0) {
+            if ((long long)regs.rax < 0) {
                 printf("PRF:: syscall in %lld returned with %lld\n", regs.rip - 2, regs.rax);
             }
         }

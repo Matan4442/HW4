@@ -14,8 +14,8 @@ typedef struct MallocMetaData {
     MallocMetaData* prev;
 } MallocMetaData;
 
-MallocMetaData* g_listHead = nullptr;
-MallocMetaData* g_listTail = nullptr;
+MallocMetaData* g_listHead = NULL;
+MallocMetaData* g_listTail = NULL;
 
 #define SIZE_OF_MALLOC(size) ((size)+sizeof(MallocMetaData))
 #define RETURN_TO_USER(curr) (void*)((size_t)(curr)+sizeof(MallocMetaData))
@@ -30,7 +30,7 @@ void* smalloc(size_t size)
         return NULL;
     }
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         if (current->is_free && current->size >= size)
         {
@@ -48,8 +48,8 @@ void* smalloc(size_t size)
     new_metadata->is_free = false;
     new_metadata->size = size;
     new_metadata->prev = g_listTail;
-    new_metadata->next = nullptr;
-    if (g_listHead == nullptr)
+    new_metadata->next = NULL;
+    if (g_listHead == NULL)
     {
         g_listHead = g_listTail =  (MallocMetaData*)ptr;
     }
@@ -75,7 +75,7 @@ void* scalloc(size_t num, size_t size)
 
 void sfree(void* p)
 {
-    if (p == nullptr){
+    if (p == NULL){
         return;
     }
     MallocMetaData* metaPtr = P_METADATA(p);
@@ -96,8 +96,8 @@ void* srealloc(void* oldp, size_t size)
         return oldp;
     }
     void* newp = smalloc(size);
-    if (newp == nullptr) {
-        return nullptr;
+    if (newp == NULL) {
+        return NULL;
     }
     memcpy(newp ,oldp ,metaPtr->size);
     sfree(oldp);
@@ -107,7 +107,7 @@ void* srealloc(void* oldp, size_t size)
 size_t _num_free_blocks(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count += current->is_free;
         current = current->next;
@@ -119,7 +119,7 @@ size_t _num_free_bytes()
 {
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         if (current->is_free) {
             count += current->size;
@@ -132,7 +132,7 @@ size_t _num_free_bytes()
 size_t _num_allocated_blocks(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count ++;
         current = current->next;
@@ -143,7 +143,7 @@ size_t _num_allocated_blocks(){
 size_t _num_allocated_bytes(){
     size_t count = 0;
     MallocMetaData* current = g_listHead;
-    while (current != nullptr)
+    while (current != NULL)
     {
         count += current->size;
         current = current->next;
@@ -155,7 +155,7 @@ size_t _num_meta_data_bytes() {
     size_t count = 0;
     MallocMetaData* current = g_listHead;
     size_t metadata_size = sizeof(MallocMetaData);
-    while (current != nullptr) {
+    while (current != NULL) {
         count += metadata_size;
         current = current->next;
     }
